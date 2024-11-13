@@ -1,0 +1,497 @@
+<html><head><base href="." /><title>Neon Core Snake</title><style>
+body {
+    margin: 0;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 100vh;
+    background: #000;
+    font-family: 'Arial', sans-serif;
+    color: #0ff;
+    position: relative;
+    overflow: hidden;
+}
+
+#matrixCanvas {
+    position: fixed;
+    top: 0;
+    left: 0;
+    z-index: -1;
+}
+
+#gameCanvas {
+    border: 2px solid #0ff;
+    box-shadow: 0 0 20px #0ff;
+    background: rgba(0, 0, 0, 0.8);
+}
+
+#score {
+    position: absolute;
+    top: 20px;
+    font-size: 24px;
+    text-shadow: 0 0 10px #0ff;
+}
+
+.game-over {
+    position: absolute;
+    display: none;
+    text-align: center;
+    font-size: 48px;
+    text-shadow: 0 0 20px #f00;
+    color: #f00;
+}
+
+.menu {
+    position: absolute;
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+    text-align: center;
+}
+
+.menu-button {
+    padding: 15px 30px;
+    font-size: 24px;
+    background: transparent;
+    border: 2px solid #0ff;
+    color: #0ff;
+    cursor: pointer;
+    text-shadow: 0 0 10px #0ff;
+    transition: all 0.3s ease;
+}
+
+.menu-button:hover {
+    background: #0ff3;
+    box-shadow: 0 0 20px #0ff;
+}
+
+.campaign-level {
+    position: absolute;
+    top: 60px;
+    font-size: 20px;
+    text-shadow: 0 0 10px #0ff;
+}
+
+.countdown {
+    position: absolute;
+    font-size: 72px;
+    color: #0ff;
+    text-shadow: 0 0 20px #0ff;
+    display: none;
+    animation: pulse 1s infinite;
+}
+
+.speed-control {
+    position: absolute;
+    top: 100px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 18px;
+    text-shadow: 0 0 10px #0ff;
+}
+
+.speed-slider {
+    -webkit-appearance: none;
+    width: 150px;
+    height: 5px;
+    background: #0ff3;
+    outline: none;
+    border-radius: 5px;
+}
+
+.speed-slider::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 15px;
+    height: 15px;
+    background: #0ff;
+    border-radius: 50%;
+    cursor: pointer;
+    box-shadow: 0 0 10px #0ff;
+}
+
+.speed-slider::-moz-range-thumb {
+    width: 15px;
+    height: 15px;
+    background: #0ff;
+    border-radius: 50%;
+    cursor: pointer;
+    box-shadow: 0 0 10px #0ff;
+}
+
+@keyframes pulse {
+    0% { transform: scale(1); }
+    50% { transform: scale(1.1); }
+    100% { transform: scale(1); }
+}
+
+.high-scores {
+    position: absolute;
+    right: 20px;
+    top: 20px;
+    background: rgba(0, 0, 0, 0.8);
+    border: 2px solid #0ff;
+    padding: 15px;
+    border-radius: 5px;
+    box-shadow: 0 0 20px #0ff;
+}
+
+.high-scores h2 {
+    margin: 0 0 10px 0;
+    font-size: 20px;
+    text-align: center;
+    text-shadow: 0 0 10px #0ff;
+}
+
+.high-scores ul {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+}
+
+.high-scores li {
+    margin: 5px 0;
+    font-size: 16px;
+    text-shadow: 0 0 5px #0ff;
+}
+
+.high-scores .mode-label {
+    color: #0fa;
+    font-size: 14px;
+    margin-top: 10px;
+    border-top: 1px solid #0ff3;
+    padding-top: 5px;
+}
+</style></head><body>
+<canvas id="matrixCanvas"></canvas>
+<div id="score">Score: 0</div>
+<div id="gameOver" class="game-over">GAME OVER</div>
+<div id="campaignLevel" class="campaign-level"></div>
+<div id="countdown" class="countdown">3</div>
+<div class="speed-control">
+    <span>Speed:</span>
+    <input type="range" min="1" max="10" value="5" class="speed-slider" id="speedSlider">
+    <span id="speedValue">5x</span>
+</div>
+<div id="menu" class="menu">
+    <button class="menu-button" onclick="startClassicMode()">Classic Mode</button>
+    <button class="menu-button" onclick="startCampaignMode()">Campaign Mode</button>
+</div>
+<div class="high-scores">
+    <h2>High Scores</h2>
+    <ul id="highScoresList"></ul>
+</div>
+<canvas id="gameCanvas" width="400" height="400"></canvas>
+
+<script>
+const matrixCanvas = document.getElementById('matrixCanvas');
+const matrixCtx = matrixCanvas.getContext('2d');
+
+function resizeMatrixCanvas() {
+    matrixCanvas.width = window.innerWidth;
+    matrixCanvas.height = window.innerHeight;
+}
+resizeMatrixCanvas();
+window.addEventListener('resize', resizeMatrixCanvas);
+
+const characters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789@#$%^&*()';
+const fontSize = 14;
+const columns = matrixCanvas.width / fontSize;
+const drops = [];
+
+for (let x = 0; x < columns; x++) {
+    drops[x] = 1;
+}
+
+function drawMatrix() {
+    matrixCtx.fillStyle = 'rgba(0, 0, 0, 0.05)';
+    matrixCtx.fillRect(0, 0, matrixCanvas.width, matrixCanvas.height);
+    
+    matrixCtx.fillStyle = '#0fa';
+    matrixCtx.font = fontSize + 'px monospace';
+    
+    for (let i = 0; i < drops.length; i++) {
+        const text = characters.charAt(Math.floor(Math.random() * characters.length));
+        matrixCtx.fillText(text, i * fontSize, drops[i] * fontSize);
+        
+        if (drops[i] * fontSize > matrixCanvas.height && Math.random() > 0.975) {
+            drops[i] = 0;
+        }
+        
+        drops[i]++;
+    }
+}
+
+function matrixAnimation() {
+    drawMatrix();
+    requestAnimationFrame(matrixAnimation);
+}
+matrixAnimation();
+
+const canvas = document.getElementById('gameCanvas');
+const ctx = canvas.getContext('2d');
+const scoreElement = document.getElementById('score');
+const gameOverElement = document.getElementById('gameOver');
+const menuElement = document.getElementById('menu');
+const campaignLevelElement = document.getElementById('campaignLevel');
+const speedSlider = document.getElementById('speedSlider');
+const speedValue = document.getElementById('speedValue');
+let baseSpeed = 100;
+
+let snake = [
+    {x: 200, y: 200},
+    {x: 190, y: 200},
+    {x: 180, y: 200},
+];
+let dx = 10;
+let dy = 0;
+let foodX;
+let foodY;
+let score = 0;
+let gameRunning = false;
+let gameMode = '';
+let campaignLevel = 1;
+let gameSpeed = 100;
+
+let highScores = {
+    classic: [],
+    campaign: []
+};
+
+function loadHighScores() {
+    const savedScores = localStorage.getItem('snakeHighScores');
+    if (savedScores) {
+        highScores = JSON.parse(savedScores);
+    }
+    updateHighScoresDisplay();
+}
+
+function saveHighScores() {
+    localStorage.setItem('snakeHighScores', JSON.stringify(highScores));
+    updateHighScoresDisplay();
+}
+
+function updateHighScoresDisplay() {
+    const highScoresList = document.getElementById('highScoresList');
+    highScoresList.innerHTML = '';
+
+    if (highScores.classic.length > 0) {
+        highScoresList.innerHTML += '<li class="mode-label">Classic Mode</li>';
+        highScores.classic
+            .sort((a, b) => b - a)
+            .slice(0, 5)
+            .forEach((score, index) => {
+                highScoresList.innerHTML += `<li>${index + 1}. ${score}</li>`;
+            });
+    }
+
+    if (highScores.campaign.length > 0) {
+        highScoresList.innerHTML += '<li class="mode-label">Campaign Mode</li>';
+        highScores.campaign
+            .sort((a, b) => b - a)
+            .slice(0, 5)
+            .forEach((score, index) => {
+                highScoresList.innerHTML += `<li>${index + 1}. ${score}</li>`;
+            });
+    }
+}
+
+function resetGame() {
+    snake = [
+        {x: 200, y: 200},
+        {x: 190, y: 200},
+        {x: 180, y: 200},
+    ];
+    dx = 10;
+    dy = 0;
+    score = 0;
+    scoreElement.textContent = `Score: ${score}`;
+    gameOverElement.style.display = 'none';
+    gameRunning = true;
+}
+
+function startCountdown(callback) {
+    const countdownElement = document.getElementById('countdown');
+    let count = 3;
+    countdownElement.style.display = 'block';
+    countdownElement.textContent = count;
+
+    const countdownInterval = setInterval(() => {
+        count--;
+        if (count > 0) {
+            countdownElement.textContent = count;
+        } else {
+            clearInterval(countdownInterval);
+            countdownElement.style.display = 'none';
+            callback();
+        }
+    }, 1000);
+}
+
+speedSlider.addEventListener('input', function() {
+    const multiplier = this.value;
+    speedValue.textContent = `${multiplier}x`;
+    gameSpeed = baseSpeed / multiplier;
+});
+
+function startClassicMode() {
+    gameMode = 'classic';
+    menuElement.style.display = 'none';
+    campaignLevelElement.style.display = 'none';
+    baseSpeed = 100;
+    gameSpeed = baseSpeed / speedSlider.value;
+    resetGame();
+    generateFood();
+    startCountdown(() => {
+        gameLoop();
+    });
+}
+
+function startCampaignMode() {
+    gameMode = 'campaign';
+    menuElement.style.display = 'none';
+    campaignLevelElement.style.display = 'block';
+    campaignLevel = 1;
+    baseSpeed = 100;
+    gameSpeed = baseSpeed / speedSlider.value;
+    updateCampaignLevel();
+    resetGame();
+    generateFood();
+    startCountdown(() => {
+        gameLoop();
+    });
+}
+
+function updateCampaignLevel() {
+    campaignLevelElement.textContent = `Level: ${campaignLevel}`;
+    baseSpeed = Math.max(50, 100 - (campaignLevel - 1) * 5);
+    gameSpeed = baseSpeed / speedSlider.value;
+}
+
+function generateFood() {
+    foodX = Math.floor(Math.random() * (canvas.width / 10)) * 10;
+    foodY = Math.floor(Math.random() * (canvas.height / 10)) * 10;
+}
+
+function drawFood() {
+    ctx.beginPath();
+    ctx.arc(foodX + 5, foodY + 5, 5, 0, Math.PI * 2);
+    ctx.fillStyle = '#f00';
+    ctx.fill();
+    ctx.shadowBlur = 15;
+    ctx.shadowColor = '#f00';
+}
+
+function drawSnakePart(snakePart, index) {
+    ctx.fillStyle = `hsl(180, 100%, ${50 + (index * 2)}%)`;
+    ctx.shadowBlur = 10;
+    ctx.shadowColor = '#0ff';
+    ctx.fillRect(snakePart.x, snakePart.y, 10, 10);
+    ctx.shadowBlur = 0;
+}
+
+function drawSnake() {
+    snake.forEach(drawSnakePart);
+}
+
+function moveSnake() {
+    const head = {x: snake[0].x + dx, y: snake[0].y + dy};
+    snake.unshift(head);
+    
+    if (head.x === foodX && head.y === foodY) {
+        score += 10;
+        scoreElement.textContent = `Score: ${score}`;
+        if (gameMode === 'campaign' && score % 50 === 0) {
+            campaignLevel++;
+            updateCampaignLevel();
+        }
+        generateFood();
+    } else {
+        snake.pop();
+    }
+}
+
+function clearCanvas() {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+}
+
+function gameOver() {
+    gameRunning = false;
+    gameOverElement.style.display = 'block';
+    gameOverElement.style.animation = 'pulse 1s infinite';
+    
+    if (gameMode === 'classic') {
+        highScores.classic.push(score);
+    } else if (gameMode === 'campaign') {
+        highScores.campaign.push(score);
+    }
+    saveHighScores();
+    
+    setTimeout(() => {
+        gameOverElement.style.display = 'none';
+        menuElement.style.display = 'flex';
+    }, 2000);
+}
+
+function checkCollision() {
+    const head = snake[0];
+    
+    if (head.x < 0 || head.x >= canvas.width || head.y < 0 || head.y >= canvas.height) {
+        return true;
+    }
+    
+    for (let i = 4; i < snake.length; i++) {
+        if (head.x === snake[i].x && head.y === snake[i].y) {
+            return true;
+        }
+    }
+    return false;
+}
+
+function gameLoop() {
+    if (!gameRunning) return;
+    
+    setTimeout(() => {
+        clearCanvas();
+        drawFood();
+        moveSnake();
+        drawSnake();
+        
+        if (checkCollision()) {
+            gameOver();
+            return;
+        }
+        
+        gameLoop();
+    }, gameSpeed);
+}
+
+document.addEventListener('keydown', (event) => {
+    const keyPressed = event.key;
+    
+    if (keyPressed === 'ArrowUp' && dy === 0) {
+        dx = 0;
+        dy = -10;
+    }
+    if (keyPressed === 'ArrowDown' && dy === 0) {
+        dx = 0;
+        dy = 10;
+    }
+    if (keyPressed === 'ArrowLeft' && dx === 0) {
+        dx = -10;
+        dy = 0;
+    }
+    if (keyPressed === 'ArrowRight' && dx === 0) {
+        dx = 10;
+        dy = 0;
+    }
+    if (keyPressed === 'Escape') {
+        gameRunning = false;
+        menuElement.style.display = 'flex';
+        gameOverElement.style.display = 'none';
+    }
+});
+
+// Load high scores when the game starts
+loadHighScores();
+</script></body></html>
